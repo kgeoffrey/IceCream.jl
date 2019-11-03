@@ -1,0 +1,119 @@
+using Pkg
+using LinearAlgebra
+using Plots
+using DataFrames, CSV
+using StatsBase, Distributions
+using ForwardDiff
+using BenchmarkTools
+using ReverseDiff
+using MLDatasets
+
+## neural network from scratch
+
+## activations
+sigmoid(x::AbstractArray) = 1 ./ (1 .+ exp.(.-x))
+relu(x::AbstractArray) = max.(zero(x),x)
+lrelu(x::AbstractArray) = max.(0.01*x, x)
+swish(x::AbstractArray) = x .* sigmoid(x)
+
+## layers
+function dropout(x,p)
+    q = 1-p
+    for i in eachindex(x)
+        x[i] .* rand(Binomial(1,q))
+    end
+    return x
+end 
+
+## Lossfunctions
+function softmax(xs::AbstractArray; dims=2)
+    max_ = maximum(xs, dims=dims)
+    exp_ = exp.(xs .- max_)
+    exp_ ./ sum(exp_, dims=dims)
+end
+
+
+const ε = eps(1.0)
+
+crossentropyloss(x::AbstractArray, y::AbstractArray) = - sum(y.*log.((x).+ ε))/size(x,1)
+mse(x::AbstractArray, y::AbstractArray) = mean((y .- x).^2) 
+
+## Helper functions
+function onehot(y::Array)
+    class = [convert(Array{Float64},y.== c) for c in unique(y)]
+    class = hcat(class...)
+    return class
+end
+
+function initializeNNparameters(inputSize, layer1Size, layer2Size, initThetaDist, y)
+    We1 =  rand(initThetaDist, layer1Size, inputSize)
+    We2 =  rand(initThetaDist, layer2Size, layer1Size)
+    # needs to match classes
+    Wd = rand(initThetaDist, size(y,2), layer2Size)
+    return (We1', We2', Wd');
+end
+
+## metric functions 
+function accuracy(pred, y)
+    s = [if i > 0.5 1 else 0 end for i in pred]
+    missclass = sum(abs.(s - onehot(y)))/size(s,2)
+    return (size(s,1) - missclass)/size(s,1)
+end
+
+function ffneuralnet(We1, We2 , Wd, x, y)
+    firstLayer = lrelu(x*We1)
+    d1 = dropout(firstLayer, 0.2)
+    encodedInput = lrelu(d1*We2)
+    d2 = dropout(encodedInput, 0.2)
+    finallayer = lrelu(d2*Wd)
+    # softmaxlayer = softmax(finallayer)
+    return mse(finallayer, y)
+end
+
+function model(We1, We2 , Wd, x)
+    firstLayer = lrelu(x*We1)
+    d1 = dropout(firstLayer, 0.2)
+    encodedInput = lrelu(d1*We2)
+    d2 = dropout(encodedInput, 0.2)
+    finallayer = lrelu(d2*Wd)
+    return finallayer
+end
+
+## Optimizer 
+function sgd(y, w1, w2, w3, data, epochs, alpha, batchsize)
+    losses = []
+    accuracys = []
+    m = size(data,1)
+    Y = y #onehot(y)
+    
+    # load instance to record a tape
+    idx_size = sample(1:m, batchsize)
+    input_size = view(data,idx_size,:) #data[sample_idx,:]
+    Y_size = view(Y,idx_size,:)
+    
+    feedforward = model(w1,w2,w3,data)
+    
+    results = (similar(w1),similar(w2),similar(w3),similar(input_size), similar(Y_size))
+    # inital_feedforward = model(w1,w2,w3,data)
+    pre = ReverseDiff.compile(ReverseDiff.GradientTape(ffneuralnet, (w1, w2, w3, input_size,Y_size)))
+    
+     @inbounds for _ in 1:epochs
+        @inbounds for _ in 1:100
+            sample_idx = sample(1:m, batchsize)
+            input = view(data,sample_idx,:)
+            Y_pass = view(Y,sample_idx,:) 
+            p1, p2, p3, ignore, ignore2 = ReverseDiff.gradient!(results, pre, (w1, w2, w3, input, Y_pass))
+            w1 .-= (alpha.*p1)
+            w2 .-= (alpha.*p2)
+            w3 .-= (alpha.*p3)
+            #feedforward .= model(w1,w2,w3,data)
+            #append!(losses, mse(feedforward, Y_pass))
+        end
+        feedforward .= model(w1,w2,w3,data)
+        append!(losses, mse(feedforward, Y))
+        # append!(losses, ffneuralnet(w1, w2, w3, data, Y))
+        # append!(accuracys, mse(feedforward, Y_pass))
+    end
+    return losses, w1, w2 ,w3
+end 
+
