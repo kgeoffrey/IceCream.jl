@@ -45,6 +45,11 @@ function onehot(y::Array)
     return class
 end
 
+function addbias(x::AbstractArray)
+    hcat(ones(size(x,1)), x)
+end
+
+
 function initializeNNparameters(inputSize, layer1Size, layer2Size, initThetaDist, y)
     We1 =  rand(initThetaDist, layer1Size, inputSize)
     We2 =  rand(initThetaDist, layer2Size, layer1Size)
