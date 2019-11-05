@@ -1,48 +1,92 @@
+
 using Pkg
 using LinearAlgebra
 using Plots
 using DataFrames, CSV
-using StatsBase, Distributions
-using ForwardDiff
-using BenchmarkTools
+using StatsBase
+using DataFrames
+using Distributions
 using ReverseDiff
 using MLDatasets
 
-## neural network from scratch
-
-## activations
 sigmoid(x::AbstractArray) = 1 ./ (1 .+ exp.(.-x))
 relu(x::AbstractArray) = max.(zero(x),x)
 lrelu(x::AbstractArray) = max.(0.01*x, x)
 swish(x::AbstractArray) = x .* sigmoid(x)
 
-## layers
-function dropout(x,p)
-    q = 1-p
-    for i in eachindex(x)
-        x[i] .* rand(Binomial(1,q))
-    end
-    return x
-end 
+training = CSV.read("titanic/julia_data/train.csv")
+test = CSV.read("titanic/julia_data/test.csv")
 
-## Lossfunctions
-function softmax(xs::AbstractArray; dims=2)
-    max_ = maximum(xs, dims=dims)
-    exp_ = exp.(xs .- max_)
-    exp_ ./ sum(exp_, dims=dims)
+y_train = training.Survived
+x_train = training[setdiff(names(training), [:Survived])]
+y_test = test.Survived
+x_test = test[setdiff(names(test), [:Survived])]
+
+Y_test = convert(Array, y_test)
+Y_train = convert(Array, y_train)
+## preparing X matrix for regression
+X = convert(Matrix, x_train)
+X_trans = fit(UnitRangeTransform, X)
+xx = StatsBase.transform(X_trans,X)
+#newx = hcat(ones(size(xx,1)), xx)
+newx = xx
+
+y_train = convert(Array{Float64}, y_train)
+
+sigmoid(x::AbstractArray) = 1 ./ (1 .+ exp.(.-x))
+relu(x::AbstractArray) = max.(zero(x),x)
+lrelu(x::AbstractArray) = max.(0.01*x, x)
+swish(x::AbstractArray) = x .* sigmoid(x)
+
+const ε = eps(1.0)
+crossentropyloss(x::AbstractArray, y::AbstractArray) = - sum(y.*log.((x).+ ε))/size(x,1)
+mse(x::AbstractArray, y::AbstractArray) = mean((y .- x).^2) 
+mutable struct icecream
+    ## General Data 
+    X_train::AbstractArray
+    Y_train::AbstractArray
+    layers::Tuple
+    weights::Tuple
+    
+    ## storing compiled model
+    feedforward::Function
+    model_loss::Function
+    idx::AbstractArray
+    X_sample::AbstractArray
+    Y_sample::AbstractArray
+    tape
+    pre_arrays
+    
+    ## storing data for training
+    optimizer::Function
+    batchsize::Int
+    loss::AbstractArray
+    
+    icecream() = new()
 end
 
 
-const ε = eps(1.0)
+### static methods
 
-crossentropyloss(x::AbstractArray, y::AbstractArray) = - sum(y.*log.((x).+ ε))/size(x,1)
-mse(x::AbstractArray, y::AbstractArray) = mean((y .- x).^2) 
+function dense(nodes::Int, Activation::Function)
+    return (nodes,Activation)
+end
 
-## Helper functions
-function onehot(y::Array)
-    class = [convert(Array{Float64},y.== c) for c in unique(y)]
-    class = hcat(class...)
-    return class
+function feedforward(X, structure, w...)
+    layer = structure[1][2](addbias(X) * w[1])
+    for i in 2:length(structure)
+        layer = structure[i][2](addbias(layer) * w[i])
+    end
+    return layer
+end
+
+# function layers(structure::Tuple)
+#     tuple(structure)
+#     nothing
+# end
+
+function layers(structure::Tuple...)
+    tuple(structure...)
 end
 
 function addbias(x::AbstractArray)
@@ -50,75 +94,92 @@ function addbias(x::AbstractArray)
 end
 
 
-function initializeNNparameters(inputSize, layer1Size, layer2Size, initThetaDist, y)
-    We1 =  rand(initThetaDist, layer1Size, inputSize)
-    We2 =  rand(initThetaDist, layer2Size, layer1Size)
-    # needs to match classes
-    Wd = rand(initThetaDist, size(y,2), layer2Size)
-    return (We1', We2', Wd');
-end
+### Type methods for functions
 
-## metric functions 
-function accuracy(pred, y)
-    s = [if i > 0.5 1 else 0 end for i in pred]
-    missclass = sum(abs.(s - onehot(y)))/size(s,2)
-    return (size(s,1) - missclass)/size(s,1)
-end
-
-function ffneuralnet(We1, We2 , Wd, x, y)
-    firstLayer = lrelu(x*We1)
-    d1 = dropout(firstLayer, 0.2)
-    encodedInput = lrelu(d1*We2)
-    d2 = dropout(encodedInput, 0.2)
-    finallayer = lrelu(d2*Wd)
-    # softmaxlayer = softmax(finallayer)
-    return mse(finallayer, y)
-end
-
-function model(We1, We2 , Wd, x)
-    firstLayer = lrelu(x*We1)
-    d1 = dropout(firstLayer, 0.2)
-    encodedInput = lrelu(d1*We2)
-    d2 = dropout(encodedInput, 0.2)
-    finallayer = lrelu(d2*Wd)
-    return finallayer
-end
-
-## Optimizer 
-function sgd(y, w1, w2, w3, data, epochs, alpha, batchsize)
-    losses = []
-    accuracys = []
-    m = size(data,1)
-    Y = y #onehot(y)
-    
-    # load instance to record a tape
-    idx_size = sample(1:m, batchsize)
-    input_size = view(data,idx_size,:) #data[sample_idx,:]
-    Y_size = view(Y,idx_size,:)
-    
-    feedforward = model(w1,w2,w3,data)
-    
-    results = (similar(w1),similar(w2),similar(w3),similar(input_size), similar(Y_size))
-    # inital_feedforward = model(w1,w2,w3,data)
-    pre = ReverseDiff.compile(ReverseDiff.GradientTape(ffneuralnet, (w1, w2, w3, input_size,Y_size)))
-    
-     @inbounds for _ in 1:epochs
-        @inbounds for _ in 1:100
-            sample_idx = sample(1:m, batchsize)
-            input = view(data,sample_idx,:)
-            Y_pass = view(Y,sample_idx,:) 
-            p1, p2, p3, ignore, ignore2 = ReverseDiff.gradient!(results, pre, (w1, w2, w3, input, Y_pass))
-            w1 .-= (alpha.*p1)
-            w2 .-= (alpha.*p2)
-            w3 .-= (alpha.*p3)
-            #feedforward .= model(w1,w2,w3,data)
-            #append!(losses, mse(feedforward, Y_pass))
-        end
-        feedforward .= model(w1,w2,w3,data)
-        append!(losses, mse(feedforward, Y))
-        # append!(losses, ffneuralnet(w1, w2, w3, data, Y))
-        # append!(accuracys, mse(feedforward, Y_pass))
+function initialize_weights(obj::icecream)
+    distribution = Normal(.5, 1)
+    weights = tuple(rand(distribution, obj.layers[1][1], size(obj.X_sample,2)+1)')
+    for i in 1:length(structure)-1
+        w_matrix = rand(distribution, obj.layers[i+1][1], obj.layers[i][1]+1)
+        weights = tuple(weights..., w_matrix')
     end
-    return losses, w1, w2 ,w3
-end 
+    obj.weights = weights
+    nothing
+end
 
+function return_tape(obj::icecream)
+    pre_arrays = (obj.X_sample, obj.Y_sample, obj.weights...)
+    tape = ReverseDiff.compile(ReverseDiff.GradientTape(obj.model_loss, (obj.X_sample, obj.Y_sample, obj.weights...)))
+    obj.pre_arrays = pre_arrays
+    obj.tape = tape
+    nothing
+end
+
+
+function compile(obj::icecream, ;X_train::AbstractArray, Y_train::AbstractArray, loss::Function, batchsize::Int, layers::Tuple)
+    ## Initializing samples for batch training
+    obj.layers = layers
+    obj.X_train = X_train
+    obj.Y_train = Y_train
+    obj.batchsize = batchsize
+    obj.idx = sample(1:size(obj.X_train,1), obj.batchsize)
+    obj.X_sample = view(X_train,obj.idx,:) 
+    obj.Y_sample = view(Y_train,obj.idx,:)
+    
+    # Initializing weights
+    initialize_weights(obj)
+    
+    # Initializing differentiable function
+    forwardpass = (X, w...) -> feedforward(X, obj.layers, w...)
+    obj.feedforward = forwardpass
+    lossmodel = (X, Y, w...) -> loss(forwardpass(X, w...), Y)
+    obj.model_loss = lossmodel
+    # prerecording tape + allocating arrays
+    return_tape(obj)
+    nothing
+end
+
+function train(obj::icecream,;optimizer::Function, alpha::Float64, epochs::Int)
+    obj.optimizer = optimizer
+    optimizer(obj, alpha, epochs)
+end
+    
+    
+## methods for SGD(stepsize, epochs)
+
+function SGD(obj::icecream,alpha::Float64, epochs::Int)
+    losses =[]
+    @inbounds for _ in 1:epochs
+        @inbounds for _ in 1:10
+            obj.idx .= sample(1:size(obj.X_train,1), obj.batchsize)
+            obj.X_sample .= view(obj.X_train, obj.idx,:)
+            obj.Y_sample .= view(obj.Y_train, obj.idx,:) 
+            gradients = ReverseDiff.gradient!(obj.pre_arrays, obj.tape, (obj.X_sample, obj.Y_sample, obj.weights...))
+            weight_gradients = gradients[3:end]
+            for i in 1:length(weight_gradients)
+                obj.weights[i] .-= (alpha * weight_gradients[i])
+            end
+        end
+        
+        append!(losses, obj.model_loss(obj.X_train, obj.Y_train , obj.weights...))
+    end
+    obj.loss = losses
+    nothing
+end
+
+
+model = icecream()
+
+structure = layers(
+    dense(40, swish),
+    dense(20, swish),
+    dense(1,sigmoid))
+
+compile(model,
+    layers = structure,
+    X_train = newx,
+    Y_train = y_train,
+    loss = mse,
+    batchsize = 10)
+    
+train(model, optimizer = SGD, alpha = 0.001, epochs = 10)
