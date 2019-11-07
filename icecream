@@ -1,4 +1,4 @@
-
+### testing diffferent data types
 using Pkg
 using LinearAlgebra
 using Plots
@@ -33,6 +33,8 @@ newx = xx
 
 y_train = convert(Array{Float64}, y_train)
 
+nothing
+
 sigmoid(x::AbstractArray) = 1 ./ (1 .+ exp.(.-x))
 relu(x::AbstractArray) = max.(zero(x),x)
 lrelu(x::AbstractArray) = max.(0.01*x, x)
@@ -41,6 +43,7 @@ swish(x::AbstractArray) = x .* sigmoid(x)
 const ε = eps(1.0)
 crossentropyloss(x::AbstractArray, y::AbstractArray) = - sum(y.*log.((x).+ ε))/size(x,1)
 mse(x::AbstractArray, y::AbstractArray) = mean((y .- x).^2) 
+
 mutable struct icecream
     ## General Data 
     X_train::AbstractArray
@@ -50,7 +53,8 @@ mutable struct icecream
     
     ## storing compiled model
     feedforward::Function
-    model_loss::Function
+    loss_function::Function
+    loss::Function
     idx::AbstractArray
     X_sample::AbstractArray
     Y_sample::AbstractArray
@@ -60,12 +64,12 @@ mutable struct icecream
     ## storing data for training
     optimizer::Function
     batchsize::Int
-    loss::AbstractArray
+    model_loss::AbstractArray
     
     icecream() = new()
 end
 
-
+    
 ### static methods
 
 function dense(nodes::Int, Activation::Function)
@@ -80,6 +84,7 @@ function feedforward(X, structure, w...)
     return layer
 end
 
+
 # function layers(structure::Tuple)
 #     tuple(structure)
 #     nothing
@@ -90,9 +95,9 @@ function layers(structure::Tuple...)
 end
 
 function addbias(x::AbstractArray)
-    hcat(ones(size(x,1)), x)
+    b = hcat(ones(size(x,1)), x)
+    return b
 end
-
 
 ### Type methods for functions
 
@@ -107,10 +112,17 @@ function initialize_weights(obj::icecream)
     nothing
 end
 
-function return_tape(obj::icecream)
+function initialize_tape(obj::icecream)
+    
     pre_arrays = (obj.X_sample, obj.Y_sample, obj.weights...)
-    tape = ReverseDiff.compile(ReverseDiff.GradientTape(obj.model_loss, (obj.X_sample, obj.Y_sample, obj.weights...)))
-    obj.pre_arrays = pre_arrays
+    allocation = tuple()
+    for i in 1:length(pre_arrays)
+        allocation = (allocation..., similar(pre_arrays[i]))
+    end
+
+    model.pre_arrays = allocation
+    
+    tape = ReverseDiff.compile(ReverseDiff.GradientTape(obj.loss_function, (obj.X_sample, obj.Y_sample, obj.weights...)))
     obj.tape = tape
     nothing
 end
@@ -123,19 +135,23 @@ function compile(obj::icecream, ;X_train::AbstractArray, Y_train::AbstractArray,
     obj.Y_train = Y_train
     obj.batchsize = batchsize
     obj.idx = sample(1:size(obj.X_train,1), obj.batchsize)
-    obj.X_sample = view(X_train,obj.idx,:) 
-    obj.Y_sample = view(Y_train,obj.idx,:)
+    obj.X_sample = view(obj.X_train,obj.idx,:) 
+    obj.Y_sample = view(obj.Y_train,obj.idx,:)
+    obj.loss = loss
     
     # Initializing weights
     initialize_weights(obj)
     
+    initialize_model(obj)
+    
     # Initializing differentiable function
-    forwardpass = (X, w...) -> feedforward(X, obj.layers, w...)
-    obj.feedforward = forwardpass
-    lossmodel = (X, Y, w...) -> loss(forwardpass(X, w...), Y)
-    obj.model_loss = lossmodel
+    #forwardpass = (X, w...) -> feedforward(X, obj.layers, w...)
+    #obj.feedforward = forwardpass
+    #lossmodel = (X, Y, w...) -> loss(forwardpass(X, w...), Y)
+    #obj.model_loss = lossmodel
     # prerecording tape + allocating arrays
-    return_tape(obj)
+    initialize_tape(obj)
+    
     nothing
 end
 
@@ -143,14 +159,19 @@ function train(obj::icecream,;optimizer::Function, alpha::Float64, epochs::Int)
     obj.optimizer = optimizer
     optimizer(obj, alpha, epochs)
 end
-    
-    
-## methods for SGD(stepsize, epochs)
+
+function initialize_model(obj::icecream)
+    forwardpass = (X, w...) -> feedforward(X, obj.layers, w...)
+    obj.feedforward = forwardpass
+    lossmodel = (X, Y, w...) -> obj.loss(forwardpass(X, w...), Y)
+    obj.loss_function = lossmodel
+    nothing
+end
 
 function SGD(obj::icecream,alpha::Float64, epochs::Int)
     losses =[]
     @inbounds for _ in 1:epochs
-        @inbounds for _ in 1:10
+        @inbounds for _ in 1:1
             obj.idx .= sample(1:size(obj.X_train,1), obj.batchsize)
             obj.X_sample .= view(obj.X_train, obj.idx,:)
             obj.Y_sample .= view(obj.Y_train, obj.idx,:) 
@@ -161,18 +182,17 @@ function SGD(obj::icecream,alpha::Float64, epochs::Int)
             end
         end
         
-        append!(losses, obj.model_loss(obj.X_train, obj.Y_train , obj.weights...))
+        append!(losses, obj.loss_function(obj.X_train, obj.Y_train , obj.weights...))
     end
-    obj.loss = losses
+    obj.model_loss = losses
     nothing
 end
-
 
 model = icecream()
 
 structure = layers(
-    dense(40, swish),
-    dense(20, swish),
+    dense(4, sigmoid),
+    dense(3, sigmoid),
     dense(1,sigmoid))
 
 compile(model,
@@ -181,5 +201,5 @@ compile(model,
     Y_train = y_train,
     loss = mse,
     batchsize = 10)
-    
-train(model, optimizer = SGD, alpha = 0.001, epochs = 10)
+
+@time train(model, optimizer = SGD, alpha = 0.1, epochs = 2000)
