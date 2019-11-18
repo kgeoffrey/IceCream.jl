@@ -1,6 +1,9 @@
-module icecream
+module Icecream
 
-export icecream, layers, compile, train
+export icecream, layers, compile, train!, dense,
+    sigmoid, lrelu, relu, swish, fastsigmoid, fastswish,
+    SGD, ADAM, ADAMAX, NADAM, ADAGRAD, AMSGRAD, ADABOUND,
+    softmax, crossentropyloss, mse, onehot
 
 using LinearAlgebra
 using Distributions

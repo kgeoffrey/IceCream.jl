@@ -13,11 +13,13 @@ mutable struct icecream
     idx::AbstractArray
     X_sample::AbstractArray
     Y_sample::AbstractArray
+    ∇::Tuple
     tape
     pre_arrays
     optimizer::Function
     batchsize::Int
     model_loss::AbstractArray
+
     icecream() = new()
 end
 
@@ -54,10 +56,10 @@ end
 
 function initialize_weights(obj::icecream)
     distribution = Normal(.5, 1)
-    weights = tuple(rand(distribution, obj.layers[1][1], size(obj.X_sample,2)+1)')
-    for i in 1:length(structure)-1
+    weights = tuple(convert(Array{Float64}, rand(distribution, obj.layers[1][1], size(obj.X_sample,2)+1)'))
+    for i in 1:length(obj.layers)-1
         w_matrix = rand(distribution, obj.layers[i+1][1], obj.layers[i][1]+1)
-        weights = tuple(weights..., w_matrix')
+        weights = tuple(weights..., convert(Array{Float64}, w_matrix'))
     end
     obj.weights = weights
     nothing
@@ -69,7 +71,7 @@ function initialize_tape(obj::icecream)
     for i in 1:length(pre_arrays)
         allocation = (allocation..., similar(pre_arrays[i]))
     end
-    model.pre_arrays = allocation
+    obj.pre_arrays = allocation
     tape = ReverseDiff.compile(ReverseDiff.GradientTape(obj.loss_function, (obj.X_sample, obj.Y_sample, obj.weights...)))
     obj.tape = tape
     nothing
@@ -83,6 +85,22 @@ function initialize_model(obj::icecream)
     nothing
 end
 
+function initializer(obj::icecream, copies::Int)
+    ## set to zero so we can use them for optimizers!
+    function zeroweights(obj::icecream)
+        t = tuple()
+        for i in 1:length(obj.weights)
+            t = (t..., zero(obj.weights[i]))
+        end
+        return t
+    end
+    result = tuple()
+    for i in 1:copies
+        result = (result..., zeroweights(obj))
+    end
+    return result
+end
+
 ## icecream call
 
 function compile(obj::icecream, ;X_train::AbstractArray, Y_train::AbstractArray, loss::Function, batchsize::Int, layers::Tuple)
@@ -94,6 +112,7 @@ function compile(obj::icecream, ;X_train::AbstractArray, Y_train::AbstractArray,
     obj.X_sample = view(obj.X_train,obj.idx,:)
     obj.Y_sample = view(obj.Y_train,obj.idx,:)
     obj.loss = loss
+    obj.model_loss = Array{Float64}(undef, 0)
 
     initialize_weights(obj)
     initialize_model(obj)
@@ -101,7 +120,7 @@ function compile(obj::icecream, ;X_train::AbstractArray, Y_train::AbstractArray,
     nothing
 end
 
-function train(obj::icecream,;optimizer::Function, alpha::Float64, epochs::Int)
+function train!(obj::icecream,;optimizer::Function, α::Float64, epochs::Int)
     obj.optimizer = optimizer
-    optimizer(obj, alpha, epochs)
+    optimizer(obj, α, epochs)
 end

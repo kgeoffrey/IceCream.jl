@@ -5,7 +5,7 @@ function update!(obj::icecream)
     obj.X_sample .= view(obj.X_train, obj.idx,:)
     obj.Y_sample .= view(obj.Y_train, obj.idx,:)
     gradients = ReverseDiff.gradient!(obj.pre_arrays, obj.tape, (obj.X_sample, obj.Y_sample, obj.weights...))
-    obj.gradients = gradients[3:end]
+    obj.∇ = gradients[3:end]
     nothing
 end
 
