@@ -21,4 +21,4 @@ end
 mse(x::AbstractArray, y::AbstractArray) = mean((y .- x).^2)
 mae(x::AbstractArray, y::AbstractArray) = mean(abs.(y .- x))
 log_cos(x::AbstractArray, y::AbstractArray) = sum(log.(cosh.(x .- y)))
-pseudo_huber(x::AbstractArray, y::AbstractArray, ;δ::Float64 = 1) = δ.^2 .* (sqrt.(1 .+ ((x .- y)./δ).^2 .- 1)
+pseudo_huber(x::AbstractArray, y::AbstractArray, ;δ::Float64 = 1) = δ .^ 2 .* (sqrt.(1 .+ ((x .- y)./δ) .^ 2 .- 1))
