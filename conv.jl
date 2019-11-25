@@ -30,18 +30,19 @@ function split_img(t, filter)
     return imgs, idxlist
 end
 
-
+function
 
 ## convolution function
 function conv(img, filters, numfilters)
     f = size(filters,1)-1
     h, w = size(img)
-    image = Array{Float64}(undef,h-f, w-f)
+    image = Array{Float64}(undef,h-f, w-f, numfilters)
 
-    imgs, idx = split_img(img, filters)
-
-    for i in 1:length(imgs)
-        image[idx[i]...] = sum(imgs[i] .* filters)
+    for j in 1:size(imgs)[3]
+        imgs, idx = split_img(img, filters)
+        for i in 1:length(imgs)
+            image[idx[i]..., j] = sum(imgs[i] .* filters)
+        end
     end
 
     return image
@@ -61,4 +62,9 @@ conv(t, filter, 2)
 imgs, idx = split_img(t, filter)
 sum(imgs[1] .* filter)
 
-filters(3, 5)
+filters(3, 8)
+
+
+gg = Array{Float64}(undef,2, 2, 8)
+
+size(gg)[3]
