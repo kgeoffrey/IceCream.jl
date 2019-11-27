@@ -40,8 +40,8 @@ compile(model,
     layers = structure,
     X_train = newx,
     Y_train = y_train,
-    loss = mse,
+    loss = log_cos,
     batchsize = 10)
 
-@time train!(model, optimizer = ADAM, α = 0.001, epochs = 2000)
+@time train!(model, optimizer = NADAM, α = 0.1, epochs = 20)
 plot(model.model_loss)
