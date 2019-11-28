@@ -1,13 +1,16 @@
 #### testing conv filters and maxpooling
 
-t = rand(5, 8)
+t = rand(10, 10)
 
-filter = rand(3,3)
+using ReverseDiff
+using LinearAlgebra
 
-mutable struct convolution
+mutable struct conv
     idx::Vector
     subimages::Vector
-    filter
+    filters::Vector
+    image::Array
+
     function convolution()
     convolution() = new()
 end
@@ -30,41 +33,51 @@ function split_img(t, filter)
     return imgs, idxlist
 end
 
-function
 
-## convolution function
-function conv(img, filters, numfilters)
-    f = size(filters,1)-1
-    h, w = size(img)
-    image = Array{Float64}(undef,h-f, w-f, numfilters)
-
-    for j in 1:size(imgs)[3]
-        imgs, idx = split_img(img, filters)
-        for i in 1:length(imgs)
-            image[idx[i]..., j] = sum(imgs[i] .* filters)
-        end
-    end
-
-    return image
-end
-
-function filters(size, number)
+function get_filters(size, number)
     filterlist = []
-
     for i in 1:number
         push!(filterlist, rand(size, size))
     end
     return filterlist
 end
+
+## convolution function
+function conv(img, filters) #filters
+
+    # filters = get_filters(f_size, f_number)
+    #f = f_size-1
+    f_number = length(filters[1][1])
+    f = size(filters,1) -1
+    h, w = size(img)
+    image = Array{Float64}(undef,h-f, w-f, f_number)
+
+    for j in 1:f_number
+        imgs, idx = split_img(img, filters)
+        for i in 1:length(imgs)
+            image[idx[i]..., j] = sum(imgs[i] .* filters)
+        end
+    end
+    return image
+end
+
+
+
 ### to do: multiple filters per image!
 
-conv(t, filter, 2)
-imgs, idx = split_img(t, filter)
-sum(imgs[1] .* filter)
 
-filters(3, 8)
+@time conv(t, filters, 1)
+convo = x -> sum(conv(t, x))
+filters = get_filters(3, 1)
+
+@time convo(filters[1])
+
+kern = [1 0 1; 2 0 2; 1 0 1]
 
 
-gg = Array{Float64}(undef,2, 2, 8)
+ReverseDiff.gradient(convo, kern)
 
-size(gg)[3]
+## investigate
+summ(x) = sum(x .* x)
+
+ReverseDiff.gradient(summ, kern)
