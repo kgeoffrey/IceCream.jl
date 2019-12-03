@@ -55,7 +55,8 @@ function conv(img, filters) #filters
     for j in 1:f_number
         imgs, idx = split_img(img, filters)
         for i in 1:length(imgs)
-            image[idx[i]..., j] = sum(imgs[i] .* filters)
+            image[idx[i]..., j] += sum(imgs[i] .* filters)
+            print()
         end
     end
     return image
@@ -66,18 +67,30 @@ end
 ### to do: multiple filters per image!
 
 
-@time conv(t, filters, 1)
-convo = x -> sum(conv(t, x))
-filters = get_filters(3, 1)
+@time conv(t, kern)
+convo = x -> (conv(t, x))
+
+filters = get_filters(3, 2)
 
 @time convo(filters[1])
 
-kern = [1 0 1; 2 0 2; 1 0 1]
+kern = [1. 0. 1.; 2. 0. 2.; 1. 0. 1.]
 
 
 ReverseDiff.gradient(convo, kern)
 
 ## investigate
-summ(x) = sum(x .* x)
+function meme(x)
+    this = rand(3,3)
+    image = zeros(3,3)
+    for i in 1:length(image)
+        image[i] = sum(this .* x)
+    end
+    return (image)
+end
 
-ReverseDiff.gradient(summ, kern)
+
+
+convo = x -> norm(conv(t, x))
+
+hm = ReverseDiff.gradient(meme, kern)
