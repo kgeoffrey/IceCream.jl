@@ -6,3 +6,5 @@ function accuracy(pred, y)
     missclass = sum(abs.(s - onehot(y)))/size(s,2)
     return (size(s,1) - missclass)/size(s,1)
 end
+
+## gotta add more here 

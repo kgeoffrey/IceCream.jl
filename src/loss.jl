@@ -8,7 +8,7 @@ end
 const ε = eps(1.0)
 crossentropy(x::AbstractArray, y::AbstractArray) = - sum(y.*log.((x).+ ε))/size(x,1)
 m = x -> length(x)
-binary_crossentropy(x::AbstractArray, y::AbstractArray) = -(1/m(y))*(transpose(y)*log.(x .+ ε) + transpose(ones(m(y))-y)*log.(ones(m(y))-(x .- ε)))
+binarycrossentropy(x::AbstractArray, y::AbstractArray) = -(1/m(y))*(transpose(y)*log.(x .+ ε) + transpose(ones(m(y))-y)*log.(ones(m(y))-(x .- ε)))
 
 function onehot(y::Array)
     class = [convert(Array{Float64},y.== c) for c in unique(y)]
