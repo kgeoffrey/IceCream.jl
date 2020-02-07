@@ -9,7 +9,7 @@ Icecream is a light-weight deep learning framework that I created to experiment 
 using IceCream
 using Plots
 
-X_train, y_train, X_test, y_test = IceCream.TitanicDataSet()
+X_train, y_train, X_test, y_test = TitanicDataSet()
 
 model = icecream()
 
@@ -22,9 +22,11 @@ compile(model,
     layers = structure,
     X_train = X_train,
     Y_train = y_train,
-    loss = crossentropy,
+    loss = binarycrossentropy,
     batchsize = 100)
 
 train!(model, optimizer = NADAM, α = 0.001, epochs = 20)
 plot(model.model_loss)
 ```
+
+![example][example.png]
