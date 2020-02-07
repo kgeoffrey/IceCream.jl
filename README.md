@@ -29,4 +29,4 @@ train!(model, optimizer = NADAM, α = 0.001, epochs = 20)
 plot(model.model_loss)
 ```
 
-![example][example.png]
+![example](example.png?raw=true "Title")
