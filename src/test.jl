@@ -29,6 +29,8 @@ include("./Icecream.jl")
 using .Icecream
 
 
+using IceCream
+
 model = icecream()
 
 structure = layers(
