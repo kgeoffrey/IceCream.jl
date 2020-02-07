@@ -1,4 +1,4 @@
-module Icecream
+module IceCream
 
 export icecream, layers, compile, train!, dense,
     sigmoid, lrelu, relu, swish, fastsigmoid, fastswish,
